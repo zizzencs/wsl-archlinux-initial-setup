@@ -1,0 +1,8 @@
+# Personal info
+username: "jane"
+full_name: "Jane Doe"
+personal_email: "jane@gmail.com"
+work_email: "jane.doe@company.com"
+
+# Locale
+locale: "en_US.UTF-8"

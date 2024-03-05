@@ -1,0 +1,6 @@
+### IntelliJ IDEA
+.idea/
+*.iml
+
+### Secrets
+host_vars/localhost

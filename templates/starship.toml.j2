@@ -1,0 +1,57 @@
+# Get editor completions based on the config schema
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# Inserts a blank line between shell prompts
+add_newline = false
+
+format = """
+\\[\
+$username\
+[@](gray)\
+$hostname\
+$directory\
+\\]\
+$git_branch\
+$aws\
+$kubernetes\
+$cmd_duration \
+\\$ \
+"""
+
+[username]
+show_always = true
+style_user = 'gray'
+style_root = 'red'
+format = '[$user]($style)'
+
+[hostname]
+ssh_only = false
+format = '[$hostname](gray) '
+
+[directory]
+truncate_to_repo = true
+truncation_length = 10
+truncation_symbol = '…/'
+style = 'bold blue'
+repo_root_style = 'bold red'
+before_repo_root_style = 'gray'
+format = '[$read_only]($read_only_style)[$path]($style)'
+
+[git_branch]
+style = 'bold red'
+format = ' \[[$symbol$branch(:$remote_branch)]($style)\]'
+
+[aws]
+style = 'bold white'
+#format = ' \[[$symbol($profile )(\($region\) )(\($duration\))]($style)\]'
+format = ' \[[$symbol($profile)]($style)\]'
+
+[kubernetes]
+disabled = false
+style = 'bold blue'
+format = ' \[[$symbol$context( \($namespace\))]($style)\]'
+detect_files = ['Chart.yaml']
+
+[cmd_duration]
+format = ' \[ [$duration]($style)\]'
+

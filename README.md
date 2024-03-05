@@ -1,0 +1,1 @@
+This repository contains an Ansible playbook that sets up some aspects of an Archlinux instance in WSL.

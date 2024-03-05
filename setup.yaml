@@ -1,0 +1,310 @@
+---
+- name: Playbook to setup the environment
+  hosts: all
+
+  tasks:
+
+    # WSL configuration
+
+    - name: Set up wsl.conf
+      become: true
+      ansible.builtin.template:
+        src: wsl.conf.j2
+        dest: /etc/wsl.conf
+        owner: root
+        group: root
+        mode: '0644'
+
+    # Pacman configuration
+
+    # Note to self: the pacman.conf in the Docker image's rootfs disables saving some files (e.g. manpages) silently:
+    # https://github.com/archlinux/archlinux-docker/commit/b6727d838f5ad4d88eaeb34fe5fe9de2fe5cc819
+    - name: Update the pacman configuration file
+      become: true
+      community.general.ini_file:
+        path: /etc/pacman.conf
+        section: options
+        allow_no_value: true
+        option: "{{ item }}"
+        state: present
+        mode: '0644'
+      loop:
+        - Color
+        - VerbosePkgLists
+        - ParallelDownloads = 24
+
+    # Locale configuration
+
+    - name: Set the locale
+      become: true
+      block:
+        - name: Enable the desired locale
+          community.general.locale_gen:
+            name: "{{ locale }}"
+            state: present
+
+        - name: Check if the desired locale is already set the current locale
+          ansible.builtin.shell:
+            cmd: |
+              set -o pipefail
+              localectl status | grep "System Locale: LANG={{ locale }}"
+          register: result_locale_status
+          failed_when: false
+          changed_when: false
+
+        - name: Set the desired locale if needed
+          ansible.builtin.shell:
+            cmd: >
+              localectl set-locale "{{ locale }}"
+          when: result_locale_status.rc == 1
+          changed_when: true
+
+    # Package installation
+
+    - name: Install the useful packages
+      aur:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - nano
+          - unzip
+          - man
+          - mc
+          - bash-completion
+          - openssh
+          - jq
+          - pwgen
+          - whois
+          - strace
+          - tcpdump
+
+    - name: Install the new-wave cli packages
+      aur:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - eza
+          - procs
+          - zoxide
+          - starship
+          - bat
+          - dog
+
+    # make sure the .config directory exists
+
+    - name: Create the ~/.config directory
+      ansible.builtin.file:
+        path: /home/{{ username }}/.config
+        state: directory
+        mode: '0750'
+
+    # nano configuration
+
+    - name: Configure nano
+      block:
+        - name: Install nano-syntax-highlighting
+          aur:
+            name: nano-syntax-highlighting
+            state: present
+
+        - name: Create the ~/.config/nano directory
+          ansible.builtin.file:
+            path: /home/{{ username }}/.config/nano
+            state: directory
+            mode: '0750'
+
+        - name: Set up the user-specific nano configuration file
+          ansible.builtin.copy:
+            src: /etc/nanorc
+            dest: "/home/{{ username }}/.config/nano/nanorc"
+            mode: '0640'
+            force: false
+
+        - name: Add syntax-highlighting to the configuration file
+          ansible.builtin.blockinfile:
+            path: "/home/{{ username }}/.config/nano/nanorc"
+            block: |
+              include "/usr/share/nano/*.nanorc"
+              include "/usr/share/nano-syntax-highlighting/*.nanorc"
+
+    # procs configuration
+
+    - name: Configure procs
+      block:
+        - name: Create the ~/.config/procs directory
+          ansible.builtin.file:
+            path: /home/{{ username }}/.config/procs
+            state: directory
+            mode: '0750'
+
+        - name: Configure procs
+          ansible.builtin.template:
+            src: procs.toml.j2
+            dest: "/home/{{ username }}/.config/procs/config.toml"
+            owner: "{{ username }}"
+            group: "{{ username }}"
+            mode: '0640'
+
+    # starship configuration
+
+    - name: Configure starship
+      ansible.builtin.template:
+        src: starship.toml.j2
+        dest: "/home/{{ username }}/.config/starship.toml"
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0640'
+
+    # git configuration
+
+    - name: Set up .gitconfig
+      ansible.builtin.template:
+        src: .gitconfig.j2
+        dest: "/home/{{ username }}/.gitconfig"
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0600'
+
+    # Java configuration
+
+    - name: Install various JDK packages and configure a default JDK
+      block:
+        - name: Install the JDK packages
+          aur:
+            name: "{{ packages }}"
+            state: present
+          vars:
+            packages:
+              - amazon-corretto-21-bin
+              - amazon-corretto-17
+              - amazon-corretto-11
+              - amazon-corretto-8
+
+        - name: Get the default JDK
+          ansible.builtin.shell:
+            cmd: >
+              archlinux-java get
+          register: result_jdk_status
+          changed_when: false
+
+        - name: Set the default JDK
+          become: true
+          ansible.builtin.shell:
+            cmd: >
+              archlinux-java set java-21-amazon-corretto
+          when: result_jdk_status.stdout is defined and result_jdk_status.stdout | length == 0
+          changed_when: true
+
+    # AWS configuration
+
+    - name: Install aws-related packages
+      aur:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - aws-cli-v2
+          - aws-vault
+
+    # Database clients configuration
+
+    - name: Install database clients
+      aur:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - postgresql
+          - mariadb-clients
+
+    # Terraform configuration
+
+    - name: Install the latest version of terraform and tofu via tenv
+      block:
+        - name: Get the latest release info via the Github API
+          ansible.builtin.uri:
+            url: https://api.github.com/repos/tofuutils/tenv/releases/latest
+            return_content: true
+          register: tenv_release_info
+
+        - name: Set some helper facts
+          ansible.builtin.set_fact:
+            tenv_browser_download_url: >
+              {{ tenv_release_info.json
+                 | community.general.json_query('assets[?ends_with(browser_download_url, `amd64.pkg.tar.zst`)]')
+                 | first
+                 | community.general.json_query('browser_download_url') }}
+            tenv_filename: >
+              /tmp/
+              {{ tenv_release_info.json
+                 | community.general.json_query('assets[?ends_with(browser_download_url, `amd64.pkg.tar.zst`)]')
+                 | first
+                 | community.general.json_query('name') }}
+
+        - name: Download the latest tenv release
+          ansible.builtin.get_url:
+            url: "{{ tenv_browser_download_url }}"
+            dest: "{{ tenv_filename }}"
+            mode: "0644"
+
+        - name: Install the latest tenv release
+          become: true
+          community.general.pacman:
+            name: "{{ tenv_filename }}"
+            state: present
+
+        - name: Check if terraform is already installed
+          ansible.builtin.shell:
+            cmd: >
+              tenv tf list
+          register: result_tenv_tf_status
+          changed_when: false
+
+        - name: Install terraform
+          ansible.builtin.shell:
+            cmd: >
+              tenv tf install
+          when: result_tenv_tf_status.stdout is defined and result_tenv_tf_status.stdout | length == 0
+          changed_when: true
+
+        - name: Check if tofu is already installed
+          ansible.builtin.shell:
+            cmd: >
+              tenv tofu list
+          register: result_tenv_tofu_status
+          changed_when: false
+
+        - name: Install terraform
+          ansible.builtin.shell:
+            cmd: >
+              tenv tofu install
+          when: result_tenv_tofu_status.stdout is defined and result_tenv_tofu_status.stdout | length == 0
+          changed_when: true
+
+    # Docker configuration
+
+    - name: Install docker-related packages
+      aur:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - docker
+          - docker-buildx
+          - docker-compose
+
+    # Kubernetes configuration
+
+    - name: Install kubernetes-related packages
+      aur:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - kubectl
+          - kubectx
+          - k9s
+          - helm
+          - istio
