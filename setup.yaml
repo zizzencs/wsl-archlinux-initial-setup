@@ -96,7 +96,7 @@
 
     - name: Create the ~/.config directory
       ansible.builtin.file:
-        path: /home/{{ username }}/.config
+        path: "/home/{{ username }}/.config"
         state: directory
         mode: '0750'
 
@@ -111,7 +111,7 @@
 
         - name: Create the ~/.config/nano directory
           ansible.builtin.file:
-            path: /home/{{ username }}/.config/nano
+            path: "/home/{{ username }}/.config/nano"
             state: directory
             mode: '0750'
 
@@ -276,7 +276,7 @@
           register: result_tenv_tofu_status
           changed_when: false
 
-        - name: Install terraform
+        - name: Install tofu
           ansible.builtin.shell:
             cmd: >
               tenv tofu install
@@ -308,3 +308,37 @@
           - k9s
           - helm
           - istio
+
+    # 1Password configuration
+
+    - name: Install 1password-cli and some helper scripts
+      block:
+        - name: Install 1password-cli
+          aur:
+            name: "1password-cli"
+            state: present
+
+        - name: Install AWS MFA credentials helper script (uses 1password-cli and aws-vault)
+          ansible.builtin.template:
+            src: aws_credentials.sh.j2
+            dest: "/home/{{ username }}/.aws/aws_credentials.sh"
+            owner: "{{ username }}"
+            group: "{{ username }}"
+            mode: '0750'
+
+    # bashrc configuration
+
+    - name: Set up .bashrc
+      ansible.builtin.template:
+        src: "{{ file }}.j2"
+        dest: "/home/{{ username }}/{{ file }}"
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0640'
+      loop: "{{ files }}"
+      loop_control:
+        loop_var: file
+      vars:
+        files:
+          - .bashrc
+          - .bashrc.secrets

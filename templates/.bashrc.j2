@@ -1,0 +1,37 @@
+#
+# ~/.bashrc
+#
+# set -x
+# If not running interactively, don't do anything
+[[ $- != *i* ]] && return
+
+# Set up ezt as an ls replacement
+alias ls='eza --header --icons --group-directories-first --long --binary --group --time-style=long-iso --git'
+
+# Set up zoxide as a cd replacement
+eval "$(zoxide init --cmd cd bash)"
+
+# Add completions
+eval "$(tenv completion bash)"
+eval "$(op completion bash)"
+
+# Set up the prompt via Starship
+eval "$(starship init bash)"
+
+# Set up the editor
+export EDITOR=nano
+
+# Set bash history size
+export HISTSIZE=9001
+export HISTFILESIZE=9001
+
+# Add secrets
+source ~/.bashrc.secrets
+
+# Configure aws-vault
+export AWS_VAULT_BACKEND=file
+# export AWS_VAULT_FILE_PASSPHRASE=<secret>
+
+# Log in to 1Password
+# export OP_PASSWORD=<secret>
+eval $(echo ${OP_PASSWORD} | op signin)
