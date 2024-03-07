@@ -26,6 +26,7 @@ export HISTSIZE=9001
 export HISTFILESIZE=9001
 
 # Add secrets
+# shellcheck disable=SC1090
 source ~/.bashrc.secrets
 
 # Configure aws-vault
@@ -34,4 +35,8 @@ export AWS_VAULT_BACKEND=file
 
 # Log in to 1Password
 # export OP_PASSWORD=<secret>
-eval $(echo ${OP_PASSWORD} | op signin)
+eval "$(op signin <<< "${OP_PASSWORD}")"
+unset OP_PASSWORD
+
+# Start keychain
+eval "$(keychain --quiet --eval id_ed25519)"

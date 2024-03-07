@@ -73,6 +73,7 @@
           - mc
           - bash-completion
           - openssh
+          - keychain
           - jq
           - pwgen
           - whois
@@ -166,6 +167,11 @@
         owner: "{{ username }}"
         group: "{{ username }}"
         mode: '0600'
+
+    - name: Install Github CLI
+      aur:
+        name: github-cli
+        state: present
 
     # Java configuration
 
