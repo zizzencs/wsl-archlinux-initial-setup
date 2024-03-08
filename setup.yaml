@@ -327,10 +327,18 @@
           - docker-compose
 
     - name: Add the user to the docker group
+      become: true
       ansible.builtin.user:
         name: "{{ username }}"
         groups: docker
         append: true
+
+    - name: Start docker and automatically start it on boot
+      become: true
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
 
     # Kubernetes configuration
 
