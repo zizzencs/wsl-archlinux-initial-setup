@@ -61,6 +61,10 @@
 
     # Package installation
 
+    - name: Gather the package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
     - name: Install the useful packages
       aur:
         name: "{{ packages }}"
@@ -237,13 +241,12 @@
 
         - name: Set some helper facts
           ansible.builtin.set_fact:
-            tenv_browser_download_url: >
+            tenv_latest_browser_download_url: >-
               {{ tenv_release_info.json
                  | community.general.json_query('assets[?ends_with(browser_download_url, `amd64.pkg.tar.zst`)]')
                  | first
                  | community.general.json_query('browser_download_url') }}
-            tenv_filename: >
-              /tmp/
+            tenv_latest_filename: >-
               {{ tenv_release_info.json
                  | community.general.json_query('assets[?ends_with(browser_download_url, `amd64.pkg.tar.zst`)]')
                  | first
@@ -251,15 +254,37 @@
 
         - name: Download the latest tenv release
           ansible.builtin.get_url:
-            url: "{{ tenv_browser_download_url }}"
-            dest: "{{ tenv_filename }}"
+            url: "{{ tenv_latest_browser_download_url }}"
+            dest: "/tmp/{{ tenv_latest_filename }}"
             mode: "0644"
+          changed_when: false
 
-        - name: Install the latest tenv release
+        - name: Check the downloaded tenv release's version
+          ansible.builtin.shell:
+            cmd:
+              pacman -Qip "/tmp/{{ tenv_latest_filename }}" | awk '/Version/{print $3}'
+          register: tenv_latest_version_temp
+          changed_when: false
+
+        - name: Set some helper facts
+          ansible.builtin.set_fact:
+            tenv_latest_version: "{{ tenv_latest_version_temp.stdout }}"
+            tenv_installed_version: "{{ (ansible_facts.packages['tenv'] | default([{'version': ''}]))[0].version }}"
+
+        - name: Install the downloaded tenv release
           become: true
           community.general.pacman:
-            name: "{{ tenv_filename }}"
+            name: "/tmp/{{ tenv_latest_filename }}"
             state: present
+          when: >
+            ('tenv' not in ansible_facts.packages) or
+            (tenv_latest_version != tenv_installed_version)
+
+        - name: Remove the installer package
+          ansible.builtin.file:
+            path: "/tmp/{{ tenv_latest_filename }}"
+            state: absent
+          changed_when: false
 
         - name: Check if terraform is already installed
           ansible.builtin.shell:
