@@ -326,6 +326,12 @@
           - docker-buildx
           - docker-compose
 
+    - name: Add the user to the docker group
+      ansible.builtin.user:
+        name: "{{ username }}"
+        groups: docker
+        append: true
+
     # Kubernetes configuration
 
     - name: Install kubernetes-related packages
