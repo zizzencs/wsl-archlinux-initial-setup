@@ -59,6 +59,17 @@
           when: result_locale_status.rc == 1
           changed_when: true
 
+    # Enable timesync
+
+    - name: Enable systemd-timesyncd on WSL
+      become: true
+      ansible.builtin.template:
+        src: systemd-timesyncd-override.conf.j2
+        dest: "/etc/systemd/system/systemd-timesyncd.service.d/override.conf"
+        owner: "root"
+        group: "root"
+        mode: '0644'
+
     # Package installation
 
     - name: Gather the package facts
