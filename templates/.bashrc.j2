@@ -25,18 +25,28 @@ export EDITOR=nano
 export HISTSIZE=9001
 export HISTFILESIZE=9001
 
-# Add secrets
-# shellcheck disable=SC1090
-source ~/.bashrc.secrets
+# Add generic secrets
+[[ -e /home/{{ username }}/.bashrc.secrets ]] && source /home/{{ username }}/.bashrc.secrets
 
 # Configure aws-vault
 export AWS_VAULT_BACKEND=file
-# export AWS_VAULT_FILE_PASSPHRASE=<secret>
-
-# Log in to 1Password
-# export OP_PASSWORD=<secret>
-eval "$(op signin <<< "${OP_PASSWORD}")"
-unset OP_PASSWORD
+[[ -e /home/{{ username }}/.bashrc.secrets.aws_vault_file_passphrase ]] && source /home/{{ username }}/.bashrc.secrets.aws_vault_file_passphrase
 
 # Start keychain
 eval "$(keychain --quiet --eval id_ed25519)"
+
+# Wait for network connectivity for a maximum of 10 seconds
+function wait_for_connectivity() {
+    for i in {1..10}; do
+        if ping -q -c 1 -W 1 1.1.1.1 >/dev/null; then
+            return 0
+        fi
+    done
+    return 1
+}
+wait_for_connectivity
+
+# Log in to 1Password
+[[ -e /home/{{ username }}/.bashrc.secrets.op_password ]] && source /home/{{ username }}/.bashrc.secrets.op_password
+op account get >/dev/null 2>&1 || eval "$(op signin <<< "${OP_PASSWORD}")"
+unset OP_PASSWORD

@@ -5,3 +5,4 @@
 ### Secrets
 host_vars/localhost
 templates/.bashrc.secrets.j2
+templates/.bashrc.secrets.*.j2

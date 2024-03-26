@@ -59,7 +59,7 @@
           when: result_locale_status.rc == 1
           changed_when: true
 
-    # Enable timesync
+    # Enable time synchronization
 
     - name: Enable systemd-timesyncd on WSL
       become: true
@@ -107,6 +107,7 @@
           - starship
           - bat
           - dog
+          - ripgrep
 
     # make sure the .config directory exists
 
@@ -386,15 +387,10 @@
 
     - name: Set up .bashrc
       ansible.builtin.template:
-        src: "{{ file }}.j2"
-        dest: "/home/{{ username }}/{{ file }}"
+        src: "{{ item }}"
+        dest: "/home/{{ username }}/{{ item | basename | regex_replace('\\.j2$', '') }}"
         owner: "{{ username }}"
         group: "{{ username }}"
         mode: '0640'
-      loop: "{{ files }}"
-      loop_control:
-        loop_var: file
-      vars:
-        files:
-          - .bashrc
-          - .bashrc.secrets
+      with_fileglob:
+        - ../templates/.bashrc*.j2
