@@ -37,7 +37,7 @@ eval "$(keychain --quiet --eval id_ed25519)"
 
 # Wait for network connectivity for a maximum of 10 seconds
 function wait_for_connectivity() {
-    for i in {1..10}; do
+    for i in {1..12}; do
         if ping -q -c 1 -W 1 1.1.1.1 >/dev/null; then
             return 0
         fi
