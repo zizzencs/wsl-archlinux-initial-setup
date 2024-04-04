@@ -15,7 +15,7 @@ $git_branch\
 $aws\
 $kubernetes\
 $cmd_duration \
-\\$ \
+\\$ 
 """
 
 [username]
@@ -43,13 +43,12 @@ format = ' \[[$symbol$branch(:$remote_branch)]($style)\]'
 
 [aws]
 style = 'bold white'
-#format = ' \[[$symbol($profile )(\($region\) )(\($duration\))]($style)\]'
 format = ' \[[$symbol($profile)]($style)\]'
 
 [kubernetes]
 disabled = false
 style = 'bold blue'
-format = ' \[[$symbol$context( \($namespace\))]($style)\]'
+format = ' \[[$symbol $context( \($namespace\))]($style)\]'
 detect_files = ['Chart.yaml']
 
 [cmd_duration]
