@@ -6,7 +6,7 @@
 
     # pre_tasks were executed manually - they are here for documentation purposes
 
-    - name: Create initial user
+    - name: Create initial user in wheel group
       become: true
       ansible.builtin.user:
         name: "{{ username }}"
@@ -15,7 +15,16 @@
         groups: wheel
         append: true
 
-    - name: Allow the wheel group to use sudo without password
+    - name: Install sudo
+      become: true
+      ansible.builtin.package:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - sudo
+
+    - name: Configure wheel group for passwordless sudo access
       become: true
       ansible.builtin.lineinfile:
         path: /etc/sudoers.d/10-wheel-group-can-run-sudo
@@ -24,11 +33,27 @@
         mode: '0644'
         validate: 'visudo -cf %s'
 
-    - name: Gather the package facts
+    - name: Check current locale settings
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          localectl status | grep "System Locale: LANG=C.UTF-8"
+      register: result_locale_status
+      failed_when: false
+      changed_when: false
+
+    - name: Set system locale to C.UTF-8
+      ansible.builtin.shell:
+        cmd: >
+          localectl set-locale "C.UTF-8"
+      when: result_locale_status.rc == 1
+      changed_when: true
+
+    - name: Gather package facts
       ansible.builtin.package_facts:
         manager: auto
 
-    - name: Install ansible-core and ansible
+    - name: Install ansible packages
       become: true
       ansible.builtin.package:
         name: "{{ packages }}"
@@ -58,7 +83,7 @@
       become: false
       when: "('yay-bin' not in ansible_facts.packages) and ('yay' not in ansible_facts.packages)"
       block:
-        - name: Clone the yay-bin repository # noqa: latest[git]
+        - name: Clone yay-bin repository # noqa: latest[git]
           ansible.builtin.git:
             repo: "https://aur.archlinux.org/yay-bin.git"
             dest: /tmp/yay
@@ -69,25 +94,25 @@
             cmd: makepkg -si --noconfirm
           changed_when: true
 
-        - name: Clean-up the yay repository
+        - name: Clean up temporary yay repository
           ansible.builtin.file:
             path: /tmp/yay
             state: absent
 
-    - name: Install ansible-aur using yay directly
+    - name: Install ansible-aur package using yay directly
       become: false
       ansible.builtin.command: yay -S --noconfirm ansible-aur
       when: "'ansible-aur' not in ansible_facts.packages"
       changed_when: true
 
-    - name: Create the aur_builder user
+    - name: Create aur_builder user
       become: true
       ansible.builtin.user:
         name: aur_builder
         create_home: true
         group: wheel
 
-    - name: Allow the aur_builder user to run sudo pacman without a password
+    - name: Configure aur_builder for passwordless sudo with pacman
       become: true
       ansible.builtin.lineinfile:
         path: /etc/sudoers.d/11-aur_builder-can-run-sudo-for-pacman

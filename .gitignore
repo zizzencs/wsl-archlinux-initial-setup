@@ -2,6 +2,12 @@
 .idea/
 *.iml
 
+### vscode
+.vscode/
+
+### ansible
+.ansible/
+
 ### Secrets
 host_vars/localhost
 templates/.bashrc.secrets.j2

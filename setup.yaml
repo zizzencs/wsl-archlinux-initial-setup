@@ -17,85 +17,93 @@
 
     # Pacman configuration
 
-    - name: Update the pacman configuration file
-      become: true
-      community.general.ini_file:
-        path: /etc/pacman.conf
-        section: options
-        allow_no_value: true
-        option: "{{ item }}"
-        state: present
-        mode: '0644'
-      loop:
-        - Color
-        - VerbosePkgLists
-        - ParallelDownloads = 24
-
-    # Note to self: the pacman.conf in the Docker image's rootfs disables saving some files (e.g. manpages) silently:
-    # https://github.com/archlinux/archlinux-docker/commit/b6727d838f5ad4d88eaeb34fe5fe9de2fe5cc819
-    - name: Remove the NoExtract lines from the end of the pacman configuration file
+    - name: Configure pacman options for better usability and faster performance
       become: true
       ansible.builtin.lineinfile:
         path: /etc/pacman.conf
-        state: absent
-        regexp: '^NoExtract\s+='
+        insertafter: '^\[options\]'
+        regexp: '^#?\s*{{ item.option }}\s*=?.*$'
+        line: "{{ item.option }}{{ ' = ' + item.value if item.value is defined else '' }}"
+        state: present
+      loop:
+        - { option: 'Color' }
+        - { option: 'VerbosePkgLists' }
+        - { option: 'ParallelDownloads', value: '24' }
+        - { option: 'ILoveCandy' }
+      loop_control:
+        label: "{{ item.option }}"
+
+    # Makepkg configuration
+
+    - name: Configure makepkg.conf for faster builds
+      become: true
+      ansible.builtin.lineinfile:
+        path: /etc/makepkg.conf
+        regexp: '^#?\s*{{ item.option }}\s*=?.*$'
+        line: '{{ item.option }}{{ item.value }}'
+        state: present
+      loop:
+        - { option: 'CFLAGS=', value: '"-march=native -mtune=native -O2 -pipe -fno-plt -fexceptions \' }
+        - { option: 'MAKEFLAGS=', value: '"-j$(nproc)"' }
+        - { option: 'OPTIONS=', value: '(strip docs !libtool !staticlibs emptydirs zipman purge !debug lto)' }
+        - { option: 'PKGEXT=', value: '".pkg.tar"' }
+      loop_control:
+        label: "{{ item.option }}"
 
     # Locale configuration
 
-    - name: Set the locale
+    - name: Configure system locale settings
       become: true
       block:
-        - name: Enable the desired locale
+        - name: Generate and enable the specified locale
           community.general.locale_gen:
             name: "{{ locale }}"
             state: present
 
-        - name: Check if the desired locale is already set the current locale
+        - name: Check current system locale configuration
           ansible.builtin.shell:
             cmd: |
               set -o pipefail
               localectl status | grep "System Locale: LANG={{ locale }}"
-          register: result_locale_status
+          register: locale_status
           failed_when: false
           changed_when: false
 
-        - name: Set the desired locale if needed
+        - name: Apply locale as system default
           ansible.builtin.shell:
             cmd: >
               localectl set-locale "{{ locale }}"
-          when: result_locale_status.rc == 1
-          changed_when: true
+          when: locale_status.rc != 0
+          changed_when: locale_status.rc != 0
 
     # Enable time synchronization
-    - name: Create the /etc/systemd/system/systemd-timesyncd.service.d directory
-      become: true
-      ansible.builtin.file:
-        path: "/etc/systemd/system/systemd-timesyncd.service.d"
-        state: directory
-        mode: '0755'
 
-
-    - name: Enable systemd-timesyncd on WSL
+    - name: Configure time synchronization on WSL
       become: true
-      ansible.builtin.template:
-        src: systemd-timesyncd-override.conf.j2
-        dest: "/etc/systemd/system/systemd-timesyncd.service.d/override.conf"
-        owner: "root"
-        group: "root"
-        mode: '0644'
+      block:
+        - name: Create the systemd-timesyncd override directory
+          ansible.builtin.file:
+            path: "/etc/systemd/system/systemd-timesyncd.service.d"
+            state: directory
+            mode: '0755'
+
+        - name: Create systemd-timesyncd override configuration
+          ansible.builtin.template:
+            src: systemd-timesyncd-override.conf.j2
+            dest: "/etc/systemd/system/systemd-timesyncd.service.d/override.conf"
+            owner: "root"
+            group: "root"
+            mode: '0644'
 
     # Package installation
 
-    - name: Gather the package facts
-      ansible.builtin.package_facts:
-        manager: auto
-
-    - name: Install the useful packages
+    - name: Install useful packages
       aur:
         name: "{{ packages }}"
         state: present
       vars:
         packages:
+          - less
           - nano
           - unzip
           - man
@@ -108,13 +116,6 @@
           - whois
           - strace
           - tcpdump
-
-    - name: Install the new-wave cli packages
-      aur:
-        name: "{{ packages }}"
-        state: present
-      vars:
-        packages:
           - eza
           - procs
           - zoxide
@@ -122,6 +123,25 @@
           - bat
           - dog
           - ripgrep
+          - github-cli
+          - aws-cli-v2
+          - aws-vault
+          - postgresql
+          - docker
+          - docker-buildx
+          - docker-compose
+          - tenv-bin
+          - kubectl
+          - kubectx
+          - k9s
+          - helm
+          - amazon-corretto-21-bin
+          - amazon-corretto-17
+          - mesa
+          - mesa-utils
+          - vulkan-dzn
+
+    # Configuration
 
     - name: Create the ~/.config directory
       ansible.builtin.file:
@@ -196,25 +216,10 @@
         group: "{{ username }}"
         mode: '0600'
 
-    - name: Install Github CLI
-      aur:
-        name: github-cli
-        state: present
-
     # Java configuration
 
-    - name: Install various JDK packages and configure a default JDK
+    - name: Configure Java environment
       block:
-        - name: Install the JDK packages
-          aur:
-            name: "{{ packages }}"
-            state: present
-          vars:
-            packages:
-              - amazon-corretto-21-bin
-              - amazon-corretto-17
-              - amazon-corretto-11
-              - amazon-corretto-8
 
         - name: Get the default JDK
           ansible.builtin.shell:
@@ -231,74 +236,39 @@
           when: result_jdk_status.stdout is defined and result_jdk_status.stdout | length == 0
           changed_when: true
 
-    # AWS configuration
-
-    - name: Install aws-related packages
-      aur:
-        name: "{{ packages }}"
-        state: present
-      vars:
-        packages:
-          - aws-cli-v2
-          - aws-vault
-
-    # Database clients configuration
-
-    - name: Install database clients
-      aur:
-        name: "{{ packages }}"
-        state: present
-      vars:
-        packages:
-          - postgresql
-          - mariadb-clients
-
     # Terraform configuration
 
-    - name: Install tenv-bin
-      aur:
-        name: tenv-bin
-        state: present
+    - name: Configure Terraform environment
+      block:
+        - name: Check if terraform is already installed
+          ansible.builtin.shell:
+            cmd: >
+              tenv tf list
+          register: result_tenv_tf_status
+          changed_when: false
 
-    - name: Check if terraform is already installed
-      ansible.builtin.shell:
-        cmd: >
-          tenv tf list
-      register: result_tenv_tf_status
-      changed_when: false
+        - name: Install terraform
+          ansible.builtin.shell:
+            cmd: >
+              tenv tf install
+          when: result_tenv_tf_status.stdout is defined and result_tenv_tf_status.stdout | length == 0
+          changed_when: true
 
-    - name: Install terraform
-      ansible.builtin.shell:
-        cmd: >
-          tenv tf install
-      when: result_tenv_tf_status.stdout is defined and result_tenv_tf_status.stdout | length == 0
-      changed_when: true
+        - name: Check if tofu is already installed
+          ansible.builtin.shell:
+            cmd: >
+              tenv tofu list
+          register: result_tenv_tofu_status
+          changed_when: false
 
-    - name: Check if tofu is already installed
-      ansible.builtin.shell:
-        cmd: >
-          tenv tofu list
-      register: result_tenv_tofu_status
-      changed_when: false
-
-    - name: Install tofu
-      ansible.builtin.shell:
-        cmd: >
-          tenv tofu install
-      when: result_tenv_tofu_status.stdout is defined and result_tenv_tofu_status.stdout | length == 0
-      changed_when: true
+        - name: Install tofu
+          ansible.builtin.shell:
+            cmd: >
+              tenv tofu install
+          when: result_tenv_tofu_status.stdout is defined and result_tenv_tofu_status.stdout | length == 0
+          changed_when: true
 
     # Docker configuration
-
-    - name: Install docker-related packages
-      aur:
-        name: "{{ packages }}"
-        state: present
-      vars:
-        packages:
-          - docker
-          - docker-buildx
-          - docker-compose
 
     - name: Add the user to the docker group
       become: true
@@ -314,24 +284,10 @@
         state: started
         enabled: true
 
-    # Kubernetes configuration
-
-    - name: Install kubernetes-related packages
-      aur:
-        name: "{{ packages }}"
-        state: present
-      vars:
-        packages:
-          - kubectl
-          - kubectx
-          - k9s
-          - helm
-          - istio
-
     # 1Password configuration
 
     - name: Import GPG key for 1password-cli
-      shell: |
+      ansible.builtin.shell: |
         if ! gpg --list-keys 3FEF9748469ADBE15DA7CA80AC2D62742012EA22; then
           gpg --recv-keys 3FEF9748469ADBE15DA7CA80AC2D62742012EA22
         fi
@@ -343,6 +299,12 @@
           aur:
             name: "1password-cli"
             state: present
+
+        - name: Create the ~/.aws directory
+          ansible.builtin.file:
+            path: "/home/{{ username }}/.aws"
+            state: directory
+            mode: '0750'
 
         - name: Install AWS MFA credentials helper script (uses 1password-cli and aws-vault)
           ansible.builtin.template:
@@ -362,4 +324,4 @@
         group: "{{ username }}"
         mode: '0640'
       with_fileglob:
-        - ../templates/.bashrc*.j2
+        - templates/.bashrc*.j2
